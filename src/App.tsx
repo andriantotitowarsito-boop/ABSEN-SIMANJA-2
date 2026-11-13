@@ -91,19 +91,42 @@ export default function App() {
   };
 
   const handleDeleteStudent = (id: string) => {
-    setStudents((prev) => {
-      const target = prev.find((s) => s.id === id || s.nis === id);
-      const updated = prev.filter((s) => s.id !== id && s.nis !== id);
-      saveStudents(updated);
-      if (target) {
-        setAttendance((attPrev) => {
-          const attUpdated = attPrev.filter((r) => r.studentNis !== target.nis);
-          saveAttendance(attUpdated);
-          return attUpdated;
-        });
-      }
-      return updated;
-    });
+    const target = students.find((s) => s.id === id || s.nis === id);
+    const updated = students.filter((s) => s.id !== id && s.nis !== id);
+    setStudents(updated);
+    saveStudents(updated);
+    if (target) {
+      setAttendance((attPrev) => {
+        const attUpdated = attPrev.filter((r) => r.studentNis !== target.nis);
+        saveAttendance(attUpdated);
+        return attUpdated;
+      });
+    }
+  };
+
+  const handleDeleteSelectedStudents = (ids: string[]) => {
+    const idSet = new Set(ids);
+    const deletedNisSet = new Set(
+      students.filter((s) => idSet.has(s.id) || idSet.has(s.nis)).map((s) => s.nis)
+    );
+    const updated = students.filter((s) => !idSet.has(s.id) && !idSet.has(s.nis));
+    setStudents(updated);
+    saveStudents(updated);
+
+    if (deletedNisSet.size > 0) {
+      setAttendance((attPrev) => {
+        const attUpdated = attPrev.filter((r) => !deletedNisSet.has(r.studentNis));
+        saveAttendance(attUpdated);
+        return attUpdated;
+      });
+    }
+  };
+
+  const handleDeleteAllStudents = () => {
+    setStudents([]);
+    saveStudents([]);
+    setAttendance([]);
+    saveAttendance([]);
   };
 
   const handleBulkAddStudents = (newStudents: Student[]) => {
@@ -230,6 +253,8 @@ export default function App() {
             onAddStudent={handleAddStudent}
             onUpdateStudent={handleUpdateStudent}
             onDeleteStudent={handleDeleteStudent}
+            onDeleteSelectedStudents={handleDeleteSelectedStudents}
+            onDeleteAllStudents={handleDeleteAllStudents}
             onBulkAddStudents={handleBulkAddStudents}
           />
         )}

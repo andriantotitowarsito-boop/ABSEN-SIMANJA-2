@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Student, SchoolProfile } from '../types';
 import {
   Search,
@@ -15,6 +15,9 @@ import {
   FileSpreadsheet,
   AlertTriangle,
   CheckCircle2,
+  CheckSquare,
+  Square,
+  MinusSquare,
 } from 'lucide-react';
 import { downloadStudentTemplate, parseStudentExcel } from '../utils/excel';
 import { StudentCardModal } from '../components/StudentCardModal';
@@ -25,6 +28,8 @@ interface StudentDatabasePageProps {
   onAddStudent: (student: Student) => void;
   onUpdateStudent: (student: Student) => void;
   onDeleteStudent: (id: string) => void;
+  onDeleteSelectedStudents: (ids: string[]) => void;
+  onDeleteAllStudents: () => void;
   onBulkAddStudents: (newStudents: Student[]) => void;
 }
 
@@ -34,6 +39,8 @@ export const StudentDatabasePage: React.FC<StudentDatabasePageProps> = ({
   onAddStudent,
   onUpdateStudent,
   onDeleteStudent,
+  onDeleteSelectedStudents,
+  onDeleteAllStudents,
   onBulkAddStudents,
 }) => {
   // Search, filter, and sort state
@@ -41,11 +48,15 @@ export const StudentDatabasePage: React.FC<StudentDatabasePageProps> = ({
   const [selectedClass, setSelectedClass] = useState<string>('ALL');
   const [sortOrder, setSortOrder] = useState<'NAME_ASC' | 'NAME_DESC' | 'NIS_ASC'>('NAME_ASC');
 
+  // Multi-selection state
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
   // Modals
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
+  const [bulkDeleteMode, setBulkDeleteMode] = useState<'selected' | 'all' | null>(null);
 
   // Student Card View/Print Modal
   const [selectedCardStudent, setSelectedCardStudent] = useState<Student | null>(null);
@@ -92,6 +103,35 @@ export const StudentDatabasePage: React.FC<StudentDatabasePageProps> = ({
         }
       });
   }, [students, searchQuery, selectedClass, sortOrder]);
+
+  // Keep selectedIds synchronized with existing students
+  useEffect(() => {
+    const validIds = new Set(students.map((s) => s.id));
+    setSelectedIds((prev) => prev.filter((id) => validIds.has(id)));
+  }, [students]);
+
+  const allFilteredSelected =
+    filteredStudents.length > 0 &&
+    filteredStudents.every((s) => selectedIds.includes(s.id));
+
+  const someFilteredSelected =
+    filteredStudents.some((s) => selectedIds.includes(s.id)) && !allFilteredSelected;
+
+  const handleToggleSelectAllFiltered = () => {
+    if (allFilteredSelected) {
+      const filteredSet = new Set(filteredStudents.map((s) => s.id));
+      setSelectedIds((prev) => prev.filter((id) => !filteredSet.has(id)));
+    } else {
+      const merged = new Set([...selectedIds, ...filteredStudents.map((s) => s.id)]);
+      setSelectedIds(Array.from(merged));
+    }
+  };
+
+  const handleToggleSelectRow = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
 
   const handleOpenAdd = () => {
     setEditingStudent(null);
@@ -185,9 +225,28 @@ export const StudentDatabasePage: React.FC<StudentDatabasePageProps> = ({
     if (!studentToDelete) return;
     const deletedName = studentToDelete.name;
     onDeleteStudent(studentToDelete.id);
+    setSelectedIds((prev) => prev.filter((id) => id !== studentToDelete.id));
     setStudentToDelete(null);
     setToastNotification(`Data siswa "${deletedName}" berhasil dihapus dari database.`);
     setTimeout(() => setToastNotification(null), 3500);
+  };
+
+  const handleConfirmBulkDelete = () => {
+    if (bulkDeleteMode === 'selected') {
+      const count = selectedIds.length;
+      onDeleteSelectedStudents(selectedIds);
+      setSelectedIds([]);
+      setBulkDeleteMode(null);
+      setToastNotification(`${count} data siswa terpilih berhasil dihapus dari database.`);
+      setTimeout(() => setToastNotification(null), 3500);
+    } else if (bulkDeleteMode === 'all') {
+      const count = students.length;
+      onDeleteAllStudents();
+      setSelectedIds([]);
+      setBulkDeleteMode(null);
+      setToastNotification(`Seluruh data siswa (${count} siswa) berhasil dihapus.`);
+      setTimeout(() => setToastNotification(null), 3500);
+    }
   };
 
   return (
@@ -254,6 +313,18 @@ export const StudentDatabasePage: React.FC<StudentDatabasePageProps> = ({
               <Printer className="w-3.5 h-3.5 mr-1.5" />
               Cetak Kartu QR ({selectedClass === 'ALL' ? 'Semua Kelas' : `Kelas ${selectedClass}`})
             </button>
+
+            {/* Hapus Keseluruhan Siswa */}
+            <button
+              type="button"
+              disabled={students.length === 0}
+              onClick={() => setBulkDeleteMode('all')}
+              className="inline-flex items-center px-3.5 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-xs font-bold transition-colors disabled:opacity-40 cursor-pointer"
+              title="Hapus seluruh data siswa dari database"
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+              Hapus Semua
+            </button>
           </div>
         </div>
 
@@ -312,13 +383,62 @@ export const StudentDatabasePage: React.FC<StudentDatabasePageProps> = ({
         </div>
       </div>
 
+      {/* Bulk Selection Action Bar */}
+      {selectedIds.length > 0 && (
+        <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/80 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-xs transition-all">
+          <div className="flex items-center space-x-2.5 text-xs">
+            <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-xl bg-rose-600 text-white font-extrabold">
+              {selectedIds.length} Dipilih
+            </span>
+            <span className="font-semibold text-rose-900 dark:text-rose-200">
+              Siswa ditandai untuk tindakan massal
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds([])}
+              className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-xs font-bold transition-colors cursor-pointer"
+            >
+              Batal Pilih
+            </button>
+            <button
+              type="button"
+              onClick={() => setBulkDeleteMode('selected')}
+              className="inline-flex items-center px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+              Hapus Terpilih ({selectedIds.length})
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Student Table */}
       <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-xs border border-slate-200 dark:border-slate-700 overflow-hidden transition-colors">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50/80 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-700 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                <th className="py-3.5 px-4 w-12 text-center">No</th>
+                <th className="py-3.5 px-3 w-10 text-center">
+                  <button
+                    type="button"
+                    onClick={handleToggleSelectAllFiltered}
+                    disabled={filteredStudents.length === 0}
+                    className="inline-flex items-center justify-center text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 disabled:opacity-40 cursor-pointer"
+                    title={allFilteredSelected ? 'Batalkan pilih semua siswa yang tampil' : 'Pilih semua siswa yang tampil'}
+                  >
+                    {allFilteredSelected ? (
+                      <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    ) : someFilteredSelected ? (
+                      <MinusSquare className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
+                    ) : (
+                      <Square className="w-4 h-4" />
+                    )}
+                  </button>
+                </th>
+                <th className="py-3.5 px-3 w-12 text-center">No</th>
                 <th className="py-3.5 px-4 w-32">NIS</th>
                 <th className="py-3.5 px-4">Nama Siswa</th>
                 <th className="py-3.5 px-4 w-28">Kelas</th>
@@ -330,75 +450,99 @@ export const StudentDatabasePage: React.FC<StudentDatabasePageProps> = ({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60">
               {filteredStudents.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400 dark:text-slate-500">
+                  <td colSpan={8} className="py-12 text-center text-slate-400 dark:text-slate-500">
                     Tidak ada data siswa yang cocok dengan filter.
                   </td>
                 </tr>
               ) : (
-                filteredStudents.map((std, idx) => (
-                  <tr key={std.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-700/40 transition-colors">
-                    <td className="py-3.5 px-4 text-center font-medium text-slate-400 dark:text-slate-500">
-                      {idx + 1}
-                    </td>
-                    <td className="py-3.5 px-4 font-mono font-bold text-sky-700 dark:text-sky-400">
-                      {std.nis}
-                    </td>
-                    <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-100">
-                      {std.name}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className="inline-block px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-[11px]">
-                        {std.className}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded font-bold text-[10px] ${
-                          std.gender === 'P'
-                            ? 'bg-rose-50 text-rose-600'
-                            : 'bg-sky-50 text-sky-600'
-                        }`}
-                      >
-                        {std.gender || 'L'}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <button
-                        onClick={() => setSelectedCardStudent(std)}
-                        className="inline-flex items-center px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold transition-colors text-[11px]"
-                      >
-                        <QrCode className="w-3.5 h-3.5 mr-1" />
-                        Kartu QR
-                      </button>
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex items-center justify-center space-x-1.5">
-                        <button
-                          onClick={() => handleOpenEdit(std)}
-                          className="p-1.5 text-slate-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"
-                          title="Edit Siswa"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
+                filteredStudents.map((std, idx) => {
+                  const isSelected = selectedIds.includes(std.id);
+                  return (
+                    <tr
+                      key={std.id}
+                      className={`transition-colors ${
+                        isSelected
+                          ? 'bg-indigo-50/50 dark:bg-indigo-950/25'
+                          : 'hover:bg-slate-50/60 dark:hover:bg-slate-700/40'
+                      }`}
+                    >
+                      <td className="py-3.5 px-3 text-center">
                         <button
                           type="button"
-                          onClick={() => setStudentToDelete(std)}
-                          className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          title="Hapus Siswa"
+                          onClick={() => handleToggleSelectRow(std.id)}
+                          className="inline-flex items-center justify-center text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer"
+                          aria-label={`Pilih ${std.name}`}
                         >
-                          <Trash2 className="w-4 h-4 text-rose-500" />
+                          {isSelected ? (
+                            <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          ) : (
+                            <Square className="w-4 h-4" />
+                          )}
                         </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="py-3.5 px-3 text-center font-medium text-slate-400 dark:text-slate-500">
+                        {idx + 1}
+                      </td>
+                      <td className="py-3.5 px-4 font-mono font-bold text-sky-700 dark:text-sky-400">
+                        {std.nis}
+                      </td>
+                      <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-100">
+                        {std.name}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className="inline-block px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-[11px]">
+                          {std.className}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded font-bold text-[10px] ${
+                            std.gender === 'P'
+                              ? 'bg-rose-50 text-rose-600'
+                              : 'bg-sky-50 text-sky-600'
+                          }`}
+                        >
+                          {std.gender || 'L'}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <button
+                          onClick={() => setSelectedCardStudent(std)}
+                          className="inline-flex items-center px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold transition-colors text-[11px] cursor-pointer"
+                        >
+                          <QrCode className="w-3.5 h-3.5 mr-1" />
+                          Kartu QR
+                        </button>
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex items-center justify-center space-x-1.5">
+                          <button
+                            onClick={() => handleOpenEdit(std)}
+                            className="p-1.5 text-slate-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Siswa"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStudentToDelete(std)}
+                            className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Hapus Siswa"
+                          >
+                            <Trash2 className="w-4 h-4 text-rose-500" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Confirmation Modal: Hapus Data Siswa (Clean In-App Modal, No window.confirm) */}
+      {/* Confirmation Modal: Hapus Data Siswa Tunggal (Clean In-App Modal) */}
       {studentToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/75 backdrop-blur-xs">
           <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200 transition-colors">
@@ -440,6 +584,77 @@ export const StudentDatabasePage: React.FC<StudentDatabasePageProps> = ({
                 className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-colors cursor-pointer"
               >
                 Ya, Hapus Siswa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal: Hapus Siswa Terpilih atau Keseluruhan */}
+      {bulkDeleteMode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/75 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200 transition-colors">
+            <div className="flex items-center space-x-3 text-rose-600 dark:text-rose-400 mb-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/60 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  {bulkDeleteMode === 'all'
+                    ? 'Hapus Seluruh Data Siswa'
+                    : `Hapus ${selectedIds.length} Siswa Terpilih`}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Konfirmasi penghapusan massal permanen
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mt-2">
+              {bulkDeleteMode === 'all' ? (
+                <>
+                  Apakah Anda yakin ingin menghapus{' '}
+                  <strong className="text-rose-600 dark:text-rose-400">
+                    SELURUH {students.length} data siswa
+                  </strong>{' '}
+                  yang ada di database?
+                </>
+              ) : (
+                <>
+                  Apakah Anda yakin ingin menghapus{' '}
+                  <strong className="text-rose-600 dark:text-rose-400">
+                    {selectedIds.length} siswa yang dipilih
+                  </strong>{' '}
+                  dari database?
+                </>
+              )}
+            </p>
+
+            <div className="mt-3 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-900/80 text-[11px] text-rose-800 dark:text-rose-300 font-medium flex items-start space-x-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+              <span>
+                {bulkDeleteMode === 'all'
+                  ? 'Semua data siswa, kartu QR, dan riwayat absensi terkait akan dihapus permanen dan tidak dapat dikembalikan.'
+                  : 'Data siswa terpilih beserta kartu QR dan riwayat absensinya akan dihapus permanen.'}
+              </span>
+            </div>
+
+            <div className="mt-5 flex items-center justify-end space-x-2.5 pt-3 border-t border-slate-100 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setBulkDeleteMode(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBulkDelete}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                {bulkDeleteMode === 'all'
+                  ? `Ya, Hapus Semua (${students.length})`
+                  : `Ya, Hapus Terpilih (${selectedIds.length})`}
               </button>
             </div>
           </div>
