@@ -1,0 +1,11 @@
+/absensi-sma
+├── /app
+│   ├── /controllers  (Logika bisnis: SiswaController, AbsensiController)
+│   ├── /models       (Interaksi Database: Siswa, Absensi, Pengaturan)
+│   └── /core         (Koneksi DB, Router)
+├── /public
+│   ├── /assets       (CSS, JS, Bootstrap, Chart.js)
+│   ├── /uploads      (Folder untuk logo, background, QR Code siswa, file Excel)
+│   └── index.php     (Entry point aplikasi)
+├── /views            (HTML/Template halaman 1 sampai 7)
+└── /config           (Konfigurasi database)

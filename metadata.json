@@ -1,0 +1,6 @@
+{
+  "name": "SI-ABSENSI SMAN 1 Majalaya Karawang",
+  "description": "Sistem Informasi Absensi Siswa berbasis QR Code & USB Scanner SMA Negeri 1 Majalaya Kabupaten Karawang.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
